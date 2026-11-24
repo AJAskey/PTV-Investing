@@ -120,11 +120,17 @@ def _write_summary_sheet(ws: Worksheet, payload: dict[str, Any], calls: list[dic
     ws.column_dimensions["B"].width = 36
 
 
-def _write_options_table(ws: Worksheet, table_name: str, contracts: list[dict[str, Any]]) -> None:
+def _write_options_table(
+    ws: Worksheet,
+    table_name: str,
+    contracts: list[dict[str, Any]],
+    min_open_interest: int = 100,
+) -> None:
     headers = [col[0] for col in COLUMNS]
     ws.append(headers)
 
-    for contract in contracts:
+    eligible = [c for c in contracts if (c.get("openInterest") or 0) > min_open_interest]
+    for contract in eligible:
         row_values: list[Any] = []
         for _, key, _ in COLUMNS:
             val = contract.get(key)
@@ -134,7 +140,7 @@ def _write_options_table(ws: Worksheet, table_name: str, contracts: list[dict[st
         ws.append(row_values)
 
     last_col = get_column_letter(len(COLUMNS))
-    last_row = max(2, len(contracts) + 1)
+    last_row = max(2, len(eligible) + 1)
     table = Table(displayName=table_name, ref=f"A1:{last_col}{last_row}")
     table.tableStyleInfo = TableStyleInfo(
         name="TableStyleMedium2",
@@ -144,12 +150,12 @@ def _write_options_table(ws: Worksheet, table_name: str, contracts: list[dict[st
         showColumnStripes=False,
     )
     ws.add_table(table)
-    ws.freeze_panes = "A2"
+    ws.freeze_panes = "H2"
 
     for col_idx, (header, _, num_fmt) in enumerate(COLUMNS, start=1):
         col_letter = get_column_letter(col_idx)
         max_len = len(header)
-        for row_idx in range(2, len(contracts) + 2):
+        for row_idx in range(2, len(eligible) + 2):
             cell = ws.cell(row=row_idx, column=col_idx)
             if num_fmt != "@":
                 cell.number_format = num_fmt
@@ -165,8 +171,9 @@ def _write_scenarios_sheet(
     payload: dict[str, Any],
     option_type: str,
     min_dte: int = 30,
+    min_open_interest: int = 100,
 ) -> None:
-    """Write a Black-Scholes scenario projection sheet for contracts with DTE >= min_dte."""
+    """Write a Black-Scholes scenario projection sheet for contracts with DTE >= min_dte and openInterest > min_open_interest."""
     ws.sheet_properties.tabColor = "FFFF00"
 
     opt = option_type.lower()
@@ -182,6 +189,7 @@ def _write_scenarios_sheet(
         ("Expiration", "yyyy-mm-dd"),
         ("DTE", "#,##0"),
         ("Type", "@"),
+        ("Break Even", "$#,##0.00"),
         ("UL Price", "$#,##0.00"),
         ("Strike", "$#,##0.00"),
         ("Mark (Buy Price)", "$#,##0.00"),
@@ -204,10 +212,17 @@ def _write_scenarios_sheet(
 
     ws.append([h[0] for h in headers])
 
-    eligible = [c for c in contracts if (c.get("daysToExpiration") or 0) >= min_dte]
+    eligible = [
+        c
+        for c in contracts
+        if (c.get("daysToExpiration") or 0) >= min_dte
+        and (c.get("openInterest") or 0) > min_open_interest
+    ]
     for contract in eligible:
         exp_date = date.fromisoformat(contract["expiration_date"])
         dte = contract.get("daysToExpiration")
+        break_even_val = contract.get("breakEven")
+        break_even = float(break_even_val) if break_even_val is not None else None
         strike = float(contract.get("strikePrice") or 0.0)
         mark_val = contract.get("mark") if contract.get("mark") is not None else contract.get("last")
         mark = float(mark_val) if mark_val is not None else None
@@ -262,6 +277,7 @@ def _write_scenarios_sheet(
                 exp_date,
                 dte,
                 contract.get("putCall", opt.upper()),
+                break_even,
                 ul_price,
                 strike,
                 mark,
@@ -286,7 +302,7 @@ def _write_scenarios_sheet(
         showColumnStripes=False,
     )
     ws.add_table(table)
-    ws.freeze_panes = "A2"
+    ws.freeze_panes = "H2"
 
     for col_idx, (header, num_fmt) in enumerate(headers, start=1):
         col_letter = get_column_letter(col_idx)

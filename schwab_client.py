@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import time
 import webbrowser
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
+import gen_logging
 
 import numpy as np
 import talib
@@ -138,12 +141,12 @@ class SchwabClient:
     def authenticate_interactive(self, open_browser: bool = True) -> None:
         """Run the one-time browser OAuth flow and save tokens locally."""
         url = self.get_authorization_url()
-        print("\n=== Schwab OAuth Login Required ===")
-        print("1. Open this URL in your browser and log in to Schwab:")
-        print(f"   {url}\n")
+        logger.info("\n=== Schwab OAuth Login Required ===")
+        logger.info("1. Open this URL in your browser and log in to Schwab:")
+        logger.info(f"   {url}\n")
         if open_browser:
             webbrowser.open(url)
-        print(
+        logger.info(
             "2. After approving, your browser will redirect to your callback URL\n"
             f"   ({self.redirect_uri}/?code=...). It may show 'Unable to connect' — that is normal.\n"
             "3. Copy the FULL URL from your browser's address bar and paste it below.\n"
@@ -151,7 +154,7 @@ class SchwabClient:
         pasted = input("Paste callback URL here: ").strip()
         code = self.extract_code(pasted)
         self.exchange_code(code)
-        print(f"Tokens saved to {self.token_path}.\n")
+        logger.info(f"Tokens saved to {self.token_path}.\n")
 
     def ensure_access_token(self) -> str:
         """Return a valid access token, refreshing or prompting for login if needed."""
@@ -250,76 +253,138 @@ class SchwabClient:
         return self._get("/pricehistory", params=params)
 
 
-def main() -> None:
-    """CLI entry point: python schwab_client.py NVDA"""
-    import argparse
+def is_price_history_fresh(
+    symbol: str,
+    out_dir: str | Path = "data",
+    cutoff_hour: int = 14,
+) -> bool:
+    """Return True if `<symbol>_price_history.json` was updated at or after `cutoff_hour` (default 2 PM) today."""
+    history_file = Path(out_dir) / f"{symbol.strip().lower()}_price_history.json"
+    if not history_file.exists():
+        return False
+    mtime = datetime.fromtimestamp(history_file.stat().st_mtime)
+    today_cutoff = datetime.now().replace(hour=cutoff_hour, minute=0, second=0, microsecond=0)
+    return mtime >= today_cutoff
 
-    parser = argparse.ArgumentParser(description="Download latest quote, options chain, and price history from Schwab.")
-    parser.add_argument("symbol", nargs="?", default="NVDA", help="Ticker symbol (default: NVDA)")
-    parser.add_argument(
-        "--strikes",
-        type=int,
-        default=10,
-        help="Number of strikes above/below ATM to fetch (0 for all strikes, default: 10)",
-    )
-    parser.add_argument(
-        "--days",
-        type=int,
-        default=250,
-        help="Number of recent daily candles to keep in the price history JSON (default: 250)",
-    )
-    args = parser.parse_args()
 
-    symbol = args.symbol.upper()
-    strike_count = None if args.strikes <= 0 else args.strikes
-    out_dir = Path("data")
-    out_dir.mkdir(exist_ok=True)
+def download_ticker_data(
+    symbol: str,
+    client: SchwabClient | None = None,
+    strikes: int = 10,
+    days: int = 250,
+    out_dir: str | Path = "data",
+    include_options: bool = True,
+    force: bool = False,
+    cutoff_hour: int = 14,
+    logger: logging.Logger | None = None,
+) -> dict[str, Any]:
+    """Download quote, optional options chain, and price history for one ticker."""
+    if logger is None:
+        logger = gen_logging.setup_logging(logger_name="schwab_client")
 
-    client = SchwabClient()
+    sym = symbol.strip().upper()
+    strike_count = None if strikes <= 0 else strikes
+    target_dir = Path(out_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    history_file = target_dir / f"{sym.lower()}_price_history.json"
+    
+    logger.info(f"Downloading data for {sym} (strikes={strike_count}, days={days}, force={force})...")
 
-    quote_data = client.get_quotes(symbol)
-    quote_file = out_dir / f"{symbol.lower()}_quote.json"
+    if not force and is_price_history_fresh(sym, target_dir, cutoff_hour=cutoff_hour):
+        logger.info(f"Skipping {sym}: {history_file} is already fresh (updated at/after {cutoff_hour:02d}:00 today).")
+        return {
+            "symbol": sym,
+            "skipped": True,
+            "price_history_file": str(history_file),
+        }
+
+    active_client = client or SchwabClient()
+
+    quote_data = active_client.get_quotes(sym)
+    quote_file = target_dir / f"{sym.lower()}_quote.json"
     quote_file.write_text(json.dumps(quote_data, indent=2), encoding="utf-8")
 
-    q = quote_data.get(symbol, {}).get("quote", {})
-    print(f"=== {symbol} Latest Quote ===")
-    print(f"  Last Price : {q.get('lastPrice')}")
-    print(f"  Bid / Ask  : {q.get('bidPrice')} / {q.get('askPrice')}")
-    print(f"  Volume     : {q.get('totalVolume')}")
-    print(f"  Saved      : {quote_file}")
+    q = quote_data.get(sym, {}).get("quote", {})
+    logger.info(f"=== {sym} Latest Quote ===")
+    logger.info(f"  Last Price : {q.get('lastPrice')}")
+    logger.info(f"  Bid / Ask  : {q.get('bidPrice')} / {q.get('askPrice')}")
+    logger.info(f"  Volume     : {q.get('totalVolume')}")
+    logger.info(f"  Saved      : {quote_file}")
 
-    chain_data = client.get_options_chain(symbol, contract_type="ALL", strike_count=strike_count)
-    chain_file = out_dir / f"{symbol.lower()}_options_chain.json"
-    chain_file.write_text(json.dumps(chain_data, indent=2), encoding="utf-8")
+    chain_data: dict[str, Any] | None = None
+    if include_options:
+        chain_data = active_client.get_options_chain(sym, contract_type="ALL", strike_count=strike_count)
+        chain_file = target_dir / f"{sym.lower()}_options_chain.json"
+        chain_file.write_text(json.dumps(chain_data, indent=2), encoding="utf-8")
 
-    call_map = chain_data.get("callExpDateMap", {})
-    put_map = chain_data.get("putExpDateMap", {})
-    print(f"\n=== {symbol} Options Chain ===")
-    print(f"  Status           : {chain_data.get('status')}")
-    print(f"  Underlying Price : {chain_data.get('underlyingPrice')}")
-    print(f"  Call Expirations : {len(call_map)}")
-    print(f"  Put Expirations  : {len(put_map)}")
-    print(f"  Saved            : {chain_file}")
+        call_map = chain_data.get("callExpDateMap", {})
+        put_map = chain_data.get("putExpDateMap", {})
+        logger.info(f"\n=== {sym} Options Chain ===")
+        logger.info(f"  Status           : {chain_data.get('status')}")
+        logger.info(f"  Underlying Price : {chain_data.get('underlyingPrice')}")
+        logger.info(f"  Call Expirations : {len(call_map)}")
+        logger.info(f"  Put Expirations  : {len(put_map)}")
+        logger.info(f"  Saved            : {chain_file}")
 
-    # Fetch 1 year (~252 trading days) of daily candles and keep the most recent `args.days` bars.
-    years_needed = max(1, (args.days + 251) // 252)
-    history_data = client.get_price_history(
-        symbol,
+    # Fetch 1 year (~252 trading days) of daily candles and keep the most recent `days` bars.
+    years_needed = max(1, (days + 251) // 252)
+    history_data = active_client.get_price_history(
+        sym,
         period_type="year",
         period=years_needed,
         frequency_type="daily",
         frequency=1,
     )
     candles = history_data.get("candles") or []
-    if args.days > 0 and len(candles) > args.days:
-        history_data["candles"] = candles[-args.days:]
-    history_file = out_dir / f"{symbol.lower()}_price_history.json"
+    if days > 0 and len(candles) > days:
+        history_data["candles"] = candles[-days:]
     history_file.write_text(json.dumps(history_data, indent=2), encoding="utf-8")
 
     kept = history_data.get("candles") or []
-    print(f"\n=== {symbol} Price History ===")
-    print(f"  Candles    : {len(kept)}")
-    print(f"  Saved      : {history_file}")
+    logger.info(f"\n=== {sym} Price History ===")
+    logger.info(f"  Candles    : {len(kept)}")
+    logger.info(f"  Saved      : {history_file}")
+
+    return {
+        "symbol": sym,
+        "skipped": False,
+        "quote": quote_data,
+        "options_chain": chain_data,
+        "price_history": history_data,
+    }
+
+
+def main(symbol: str | None = None, strikes: int = 10, days: int = 250, force: bool = False) -> dict[str, Any]:
+    """CLI or programmatic entry point: python schwab_client.py NVDA or schwab.main('MU')."""
+    if symbol is None:
+        import argparse
+
+        parser = argparse.ArgumentParser(description="Download latest quote, options chain, and price history from Schwab.")
+        parser.add_argument("symbol", nargs="?", default="NVDA", help="Ticker symbol (default: NVDA)")
+        parser.add_argument(
+            "--strikes",
+            type=int,
+            default=10,
+            help="Number of strikes above/below ATM to fetch (0 for all strikes, default: 10)",
+        )
+        parser.add_argument(
+            "--days",
+            type=int,
+            default=250,
+            help="Number of recent daily candles to keep in the price history JSON (default: 250)",
+        )
+        parser.add_argument(
+            "--force",
+            action="store_true",
+            help="Download even if price history was already updated at or after 2:00 PM today",
+        )
+        args = parser.parse_args()
+        symbol = args.symbol
+        strikes = args.strikes
+        days = args.days
+        force = args.force
+
+    return download_ticker_data(symbol, strikes=strikes, days=days, force=force)
 
 
 if __name__ == "__main__":
