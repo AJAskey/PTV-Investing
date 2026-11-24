@@ -29,7 +29,7 @@ def normal_cdf(x):
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
-def calculate_option_price(S, K, DTE, r, iv, option_type="call"):
+def calculate_option_price(S, K, DTE, r, iv, option_type="call", logger: Any = None):
     """
     S: Stock Price
     K: Strike Price
@@ -40,6 +40,9 @@ def calculate_option_price(S, K, DTE, r, iv, option_type="call"):
     """
     if S <= 0 or K <= 0 or iv <= 0:
         return 0.0
+    
+    if logger:
+        logger.debug(f"Calculating option price: S={S}, K={K}, DTE={DTE}, r={r}, iv={iv}, type={option_type}")
         
     T = max(DTE / 365.0, 0.00001)
     sigma_sqrt_t = iv * math.sqrt(T)

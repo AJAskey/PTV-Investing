@@ -275,7 +275,7 @@ def download_ticker_data(
     out_dir: str | Path = "data",
     include_options: bool = True,
     force: bool = False,
-    cutoff_hour: int = 14,
+    cutoff_hour: int = 15,
     logger: logging.Logger | None = None,
 ) -> dict[str, Any]:
     """Download quote, optional options chain, and price history for one ticker."""

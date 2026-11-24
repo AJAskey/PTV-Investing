@@ -1,19 +1,41 @@
 import json
 from pathlib import Path
+from typing import Any
+
 import pandas as pd
 import talib
 
 
-def load_price_history(json_path: str | Path) -> pd.DataFrame:
-    """Load Schwab price history JSON into a chronologically sorted DataFrame."""
-    raw = json.loads(Path(json_path).read_text(encoding="utf-8"))
-    candles = raw.get("candles") or []
+def price_history_to_dataframe(
+    data: dict[str, Any] | list[dict[str, Any]] | str | Path,
+) -> pd.DataFrame:
+    """Convert Schwab price history JSON (dict, candle list, JSON string, or file path) into a sorted DataFrame."""
+    if isinstance(data, Path):
+        raw = json.loads(data.read_text(encoding="utf-8"))
+    elif isinstance(data, str):
+        stripped = data.lstrip()
+        if stripped.startswith(("{", "[")):
+            raw = json.loads(data)
+        else:
+            raw = json.loads(Path(data).read_text(encoding="utf-8"))
+    else:
+        raw = data
+
+    candles = raw if isinstance(raw, list) else (raw.get("candles") or [])
     if not candles:
-        raise ValueError(f"No candles found in {json_path}")
+        raise ValueError("No candles found in price history data.")
 
     df = pd.DataFrame(candles)
+    for col in ("open", "high", "low", "close", "volume"):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
     df["date"] = pd.to_datetime(df["datetime"], unit="ms")
     return df.sort_values("date").reset_index(drop=True)
+
+
+def load_price_history(json_path: str | Path) -> pd.DataFrame:
+    """Load Schwab price history JSON into a chronologically sorted DataFrame."""
+    return price_history_to_dataframe(Path(json_path))
 
 
 def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -45,6 +67,19 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["atr_14"] = talib.ATR(high, low, close, timeperiod=14)
     df["obv"] = talib.OBV(close, volume)
     return df
+
+
+def save_dataframe(df: pd.DataFrame, output_path: str | Path) -> Path:
+    """Save a DataFrame to Parquet, creating parent directories if needed."""
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(path, index=False)
+    return path
+
+
+def load_dataframe(parquet_path: str | Path) -> pd.DataFrame:
+    """Load a DataFrame from a Parquet file."""
+    return pd.read_parquet(Path(parquet_path))
 
 
 if __name__ == "__main__":

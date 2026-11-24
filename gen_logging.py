@@ -71,7 +71,7 @@ def setup_logging(logger_name=None, year=None, multiple_db_files=None):
 
     # USE A NAMED LOGGER so threads get isolated loggers, completely bypassing root duplication
     logger = logging.getLogger(log_prefix)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)  # Capture all levels; handlers will filter as needed
     logger.propagate = False  # DO NOT pass logs up to the root logger
 
     # Fix the duplicate logging issue: 

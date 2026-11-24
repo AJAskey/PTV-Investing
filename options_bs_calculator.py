@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Black-Scholes European option pricing calculator."""
 
+import logging
 import math
 
 
@@ -17,6 +18,7 @@ def calculate_option_price(
     iv: float,
     option_type: str = "call",
     q: float = 0.0,
+    logger: logging.Logger | None = None,
 ) -> float:
     """
     Calculate European option price using Black-Scholes-Merton.
@@ -29,6 +31,12 @@ def calculate_option_price(
     option_type: 'call' or 'put'
     q: Continuous dividend yield (e.g. 0.015 for 1.5%)
     """
+    if logger:
+        logger.debug(
+            f"Calculating option price: S={S}, K={K}, DTE={DTE}, r={r}, iv={iv}, type={option_type}, q={q}"
+        )
+    
+    
     opt = option_type.lower()
     if opt not in ("call", "put"):
         raise ValueError(f"Invalid option_type {option_type!r}; expected 'call' or 'put'.")
