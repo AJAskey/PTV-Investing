@@ -1,4 +1,6 @@
-ptv_path = "C:/Dev/PTV-Investing/"
+from pathlib import Path
+
+ptv_path = str(Path(__file__).resolve().parent.parent)
 stockdata_path = f"{ptv_path}/stockdata"
 subdata_path = f"{ptv_path}/subs"
 

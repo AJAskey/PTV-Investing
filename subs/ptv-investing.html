@@ -1,11 +1,271 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PTV Investing</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PTV Investing — Stock Market &amp; Economic Analysis Data</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #635bff;
+      --accent-hover: #4f46e5;
+      --success: #22c55e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 36px 20px 64px;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+    header h1 {
+      font-size: 2rem;
+      margin: 0 0 8px;
+    }
+    header p {
+      color: var(--muted);
+      margin: 0 auto;
+      max-width: 600px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .card h2 {
+      margin: 0 0 6px;
+      font-size: 1.25rem;
+    }
+    .price {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin: 8px 0 12px;
+    }
+    .price span {
+      font-size: 0.95rem;
+      font-weight: 400;
+      color: var(--muted);
+    }
+    ul {
+      padding-left: 18px;
+      color: var(--muted);
+      margin: 0 0 16px;
+    }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-top: 10px;
+    }
+    input {
+      width: 100%;
+      padding: 9px 10px;
+      margin-top: 4px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+    button {
+      width: 100%;
+      margin-top: 14px;
+      padding: 11px 16px;
+      border: none;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: var(--accent-hover); }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    .secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+    }
+    .secondary:hover { background: #273449; }
+    #status {
+      margin-top: 24px;
+      padding: 14px;
+      border-radius: 8px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      display: none;
+      white-space: pre-wrap;
+      font-size: 0.9rem;
+    }
+    footer {
+      margin-top: 40px;
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    footer a { color: #a5b4fc; }
+  </style>
 </head>
 <body>
-  <p>This is the landing page for PTV Investing.</p>
+  <div class="container">
+    <header>
+      <h1>PTV Investing</h1>
+      <p>Actionable stock market &amp; economic analysis data—options chains, Black-Scholes scenarios, and technical indicators.</p>
+    </header>
+
+    <div class="grid">
+      <div class="card">
+        <div>
+          <h2>All-Access Subscription</h2>
+          <div class="price">$20 <span>/ month</span></div>
+          <ul>
+            <li>Full access to PTV Investing stock &amp; options data</li>
+            <li>Technical analysis &amp; scenario workbooks</li>
+            <li>Cancel or update billing anytime</li>
+          </ul>
+          <label>Email (optional)
+            <input id="sub_email" type="email" placeholder="you@example.com" />
+          </label>
+        </div>
+        <button id="sub_btn" onclick="subscribe()">Subscribe — $20/mo</button>
+      </div>
+
+      <div class="card">
+        <div>
+          <h2>One-Time Data Report</h2>
+          <div class="price">$49 <span>one-time</span></div>
+          <ul>
+            <li>Single custom market &amp; options analysis package</li>
+            <li>Instant Stripe-hosted checkout</li>
+          </ul>
+          <label>Email (optional)
+            <input id="ot_email" type="email" placeholder="buyer@example.com" />
+          </label>
+        </div>
+        <button id="ot_btn" onclick="buyOneTime()">Buy One-Time Report — $49</button>
+      </div>
+
+      <div class="card">
+        <div>
+          <h2>Custom B2B Invoice</h2>
+          <p style="color: var(--muted); margin-top: 4px;">Request a hosted Stripe invoice for institutional or custom research.</p>
+          <label>Client Email
+            <input id="inv_email" type="email" placeholder="client@company.com" />
+          </label>
+          <label>Description
+            <input id="inv_desc" value="Custom Economic &amp; Stock Analysis" />
+          </label>
+          <label>Amount (USD)
+            <input id="inv_dollars" type="number" min="1" step="1" value="250" />
+          </label>
+        </div>
+        <button id="inv_btn" class="secondary" onclick="sendInvoice()">Create &amp; Send Invoice</button>
+      </div>
+    </div>
+
+    <div id="status"></div>
+
+    <footer>
+      <a href="/console">Developer Test Console</a> &middot;
+      <a href="/docs">API Docs</a>
+    </footer>
+  </div>
+
+  <script>
+    const API_BASE = window.location.protocol === "file:" ? "http://127.0.0.1:8000" : "";
+    const SUBSCRIPTION_PRICE_ID = "price_1UgSkfDI8hNSOp4OFOvYjcLf";
+
+    function showStatus(html) {
+      const el = document.getElementById("status");
+      el.style.display = "block";
+      el.innerHTML = html;
+    }
+
+    async function postAndRedirect(btnId, endpoint, payload, redirectAutomatically = true) {
+      const btn = document.getElementById(btnId);
+      btn.disabled = true;
+      showStatus("Connecting to Stripe...");
+      try {
+        const resp = await fetch(API_BASE + endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          showStatus("Error: " + (data.detail || JSON.stringify(data)));
+          return;
+        }
+        const link = data.url || data.hosted_invoice_url;
+        if (link && redirectAutomatically) {
+          showStatus('Redirecting to Stripe... <a href="' + link + '" style="color:#a5b4fc;">Click here if not redirected</a>');
+          window.location.href = link;
+        } else if (link) {
+          showStatus('Invoice created and sent! <a href="' + link + '" target="_blank" style="color:#a5b4fc;">Open Hosted Invoice &rarr;</a>');
+        } else {
+          showStatus(JSON.stringify(data, null, 2));
+        }
+      } catch (err) {
+        showStatus("Request failed: " + err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function subscribe() {
+      const email = document.getElementById("sub_email").value.trim();
+      postAndRedirect("sub_btn", "/checkout/subscription", {
+        price_id: SUBSCRIPTION_PRICE_ID,
+        customer_email: email || null,
+      });
+    }
+
+    function buyOneTime() {
+      const email = document.getElementById("ot_email").value.trim();
+      postAndRedirect("ot_btn", "/checkout/one-time", {
+        product_name: "PTV Investing Data Report",
+        amount_cents: 4900,
+        customer_email: email || null,
+      });
+    }
+
+    function sendInvoice() {
+      const email = document.getElementById("inv_email").value.trim();
+      if (!email) {
+        showStatus("Please enter a client email address for the invoice.");
+        return;
+      }
+      const dollars = Number(document.getElementById("inv_dollars").value);
+      postAndRedirect("inv_btn", "/invoices", {
+        customer_email: email,
+        items: [{
+          description: document.getElementById("inv_desc").value,
+          amount_cents: Math.round(dollars * 100),
+        }],
+      }, false);
+    }
+  </script>
 </body>
 </html>
