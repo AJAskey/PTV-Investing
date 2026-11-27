@@ -15,7 +15,9 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.worksheet.worksheet import Worksheet
 
 from options_bs_calculator import calculate_option_price
+import calc_ta
 import stockdata
+import common
 
 import logging
 
@@ -144,6 +146,50 @@ def _write_summary_sheet(
 
     ws.column_dimensions["A"].width = 22
     ws.column_dimensions["B"].width = 36
+
+
+TA_FIELD_FORMATS: dict[str, tuple[str, str]] = {
+    "last_price": ("Last Price", "$#,##0.00"),
+    "ma20": ("20 DMA", "$#,##0.00"),
+    "ma50": ("50 DMA", "$#,##0.00"),
+    "ma150": ("150 DMA", "$#,##0.00"),
+    "rsi14": ("RSI (14)", "0.00"),
+    "adx14": ("ADX (14)", "0.00"),
+    "dip14": ("DI+ (14)", "0.00"),
+    "dim14": ("DI- (14)", "0.00"),
+    "atr14": ("ATR (14)", "$#,##0.00"),
+    "obv": ("OBV", "#,##0"),
+}
+
+
+def _write_ta_data_sheet(
+    ws: Worksheet,
+    ul_ticker: str,
+    ta_json: Any,
+) -> None:
+    """Write technical analysis summary values returned by `calc_ta.get_ta_data`."""
+    ta_dict = ta_json if isinstance(ta_json, dict) else vars(ta_json)
+
+    ws.append(["Indicator", "Value"])
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill(
+            start_color="1F4E78", end_color="1F4E78", fill_type="solid"
+        )
+
+    ws.append(["Ticker", ul_ticker.strip().upper()])
+    for key, value in ta_dict.items():
+        label, num_fmt = TA_FIELD_FORMATS.get(key, (key, ""))
+        ws.append([label, value])
+        if num_fmt and value is not None:
+            ws.cell(row=ws.max_row, column=2).number_format = num_fmt
+
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+        row[0].font = Font(bold=True)
+        row[1].alignment = Alignment(horizontal="left")
+
+    ws.column_dimensions["A"].width = 22
+    ws.column_dimensions["B"].width = 24
 
 
 def _write_options_table(
@@ -438,7 +484,7 @@ def convert_options_json_to_excel(
         ),
     )
     
-    ta_data = stockdata.StockData(ul_ticker, data_dir="data")
+    ta_data = stockdata.StockData(ul_ticker, data_dir=common.stockdata_path)
 
     wb = Workbook()
     summary_ws = wb.active
@@ -477,6 +523,13 @@ def convert_options_json_to_excel(
         high_profit_file=high_profit_file,
         ta_data=ta_data,
     )
+
+    price_history_path = (
+        Path(common.stockdata_path) / f"{ul_ticker.strip().lower()}_price_history.json"
+    )
+    ta_json = calc_ta.get_ta_data(price_history_path)
+    ta_ws = wb.create_sheet("TA Data")
+    _write_ta_data_sheet(ta_ws, ul_ticker, ta_json)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(output_path)

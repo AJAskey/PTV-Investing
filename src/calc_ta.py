@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from typing import Any
-
+import common
 import pandas as pd
 import talib
 
@@ -97,11 +97,40 @@ def load_dataframe(parquet_path: str | Path) -> pd.DataFrame:
     """Load a DataFrame from a Parquet file."""
     return pd.read_parquet(Path(parquet_path))
 
+def _last_value(series: pd.Series, decimals: int | None = 2) -> float | int | None:
+    """Return the last non-NaN value in `series`, rounded or cast to int when `decimals` is None."""
+    if series.empty:
+        return None
+    val = series.iloc[-1]
+    if pd.isna(val):
+        return None
+    return int(val) if decimals is None else round(float(val), decimals)
+
+
+def get_ta_data(json_path: str | Path) -> Any:
+    """Load price history from `json_path`, calculate indicators, and return latest TA values."""
+    df = load_price_history(json_path)
+    df = calculate_indicators(df)
+    ret = type("Ret", (), {})()
+    ret.last_price = _last_value(df["close"])
+    ret.ma20 = _last_value(df["sma_20"])
+    ret.ma50 = _last_value(df["sma_50"])
+    ret.ma150 = _last_value(df["sma_150"])
+    ret.rsi14 = _last_value(df["rsi_14"])
+    ret.adx14 = _last_value(df["adx_14"])
+    ret.dip14 = _last_value(df["dip_14"])
+    ret.dim14 = _last_value(df["dim_14"])
+    ret.atr14 = _last_value(df["atr_14"])
+    ret.obv = _last_value(df["obv"], decimals=None)
+    return ret
+
 
 if __name__ == "__main__":
-    df = load_price_history("data/spy_price_history.json")
+    df = load_price_history(common.stockdata_path+"/spy_price_history.json")
     df = calculate_indicators(df)
     print(df[["date", "close", "sma_20", "sma_50", "sma_150", "rsi_14", "atr_14"]].tail(5).round(2))
     print(f"ADX 14: {df['adx_14'].iloc[-1]:.2f}")  
     print(f"DIP 14: {df['dip_14'].iloc[-1]:.2f}")  
     print(f"DIM 14: {df['dim_14'].iloc[-1]:.2f}")
+    ta_json = get_ta_data(common.stockdata_path+"/spy_price_history.json")
+    print(common.dict_to_str(ta_json.__dict__, desc="TA_Data"))

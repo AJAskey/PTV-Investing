@@ -1,4 +1,8 @@
-Hello, world!BDX   270115C00220000 : 2027-01-15 : 220.0 : Mark 9.3 : IV@sell 24.57% : 275.39%
+PTV-Investing.net 
+Stocks with ADX > 30 and DI- > DI+, will show only puts.
+Stocks with ADX > 30 and DI- < DI+, will show only calls.
+Only profits greater than 200% are shown. 
+BDX   270115C00220000 : 2027-01-15 : 220.0 : Mark 9.3 : IV@sell 24.57% : 275.39%
 BDX   270319C00220000 : 2027-03-19 : 220.0 : Mark 14.9 : IV@sell 24.70% : 357.05%
 BOX   270319C00060000 : 2027-03-19 : 60.0 : Mark 1.18 : IV@sell 58.63% : 212.68%
 CAT   270319P00480000 : 2027-03-19 : 480.0 : Mark 30.73 : IV@sell 50.13% : 209.46%

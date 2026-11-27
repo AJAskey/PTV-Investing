@@ -1,0 +1,12 @@
+PTV-Investing.net 
+Stocks with ADX > 30 and DI- > DI+, will show only puts.
+Stocks with ADX > 30 and DI- < DI+, will show only calls.
+Only profits greater than 200% are shown. 
+PTV-Investing.net 
+Stocks with ADX > 30 and DI- > DI+, will show only puts.
+Stocks with ADX > 30 and DI- < DI+, will show only calls.
+Only profits greater than 200% are shown. 
+PTV-Investing.net 
+Stocks with ADX > 30 and DI- > DI+, will show only puts.
+Stocks with ADX > 30 and DI- < DI+, will show only calls.
+Only profits greater than 200% are shown. 

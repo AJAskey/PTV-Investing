@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
 import gen_logging
+import common
 
 import numpy as np
 import talib
@@ -43,7 +44,9 @@ class SchwabClient:
         load_dotenv()
         self.client_id = client_id or os.getenv("SCHWAB_CLIENT_ID", "")
         self.client_secret = client_secret or os.getenv("SCHWAB_CLIENT_SECRET", "")
-        self.redirect_uri = redirect_uri or os.getenv("SCHWAB_REDIRECT_URI", "https://127.0.0.1")
+        self.redirect_uri = redirect_uri or os.getenv(
+            "SCHWAB_REDIRECT_URI", "https://127.0.0.1"
+        )
         self.token_path = Path(token_path)
 
         if not self.client_id or not self.client_secret:
@@ -109,7 +112,9 @@ class SchwabClient:
             timeout=30,
         )
         if not resp.ok:
-            raise SchwabAPIError(f"Token exchange failed ({resp.status_code}): {resp.text}")
+            raise SchwabAPIError(
+                f"Token exchange failed ({resp.status_code}): {resp.text}"
+            )
         payload = resp.json()
         self._save_tokens(payload)
         return payload
@@ -118,7 +123,9 @@ class SchwabClient:
         """Use the stored refresh_token to obtain a fresh access_token."""
         refresh_token = self._tokens.get("refresh_token")
         if not refresh_token:
-            raise SchwabAPIError("No refresh_token available; interactive login is required.")
+            raise SchwabAPIError(
+                "No refresh_token available; interactive login is required."
+            )
 
         resp = requests.post(
             TOKEN_URL,
@@ -133,7 +140,9 @@ class SchwabClient:
             timeout=30,
         )
         if not resp.ok:
-            raise SchwabAPIError(f"Token refresh failed ({resp.status_code}): {resp.text}")
+            raise SchwabAPIError(
+                f"Token refresh failed ({resp.status_code}): {resp.text}"
+            )
         payload = resp.json()
         self._save_tokens(payload)
         return payload
@@ -185,7 +194,10 @@ class SchwabClient:
             token = str(self._tokens["access_token"])
             resp = requests.get(
                 url,
-                headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                },
                 params=params,
                 timeout=30,
             )
@@ -201,7 +213,9 @@ class SchwabClient:
     ) -> dict[str, Any]:
         """Fetch latest quotes for one or more ticker symbols."""
         symbol_str = symbols if isinstance(symbols, str) else ",".join(symbols)
-        return self._get("/quotes", params={"symbols": symbol_str.upper(), "fields": fields})
+        return self._get(
+            "/quotes", params={"symbols": symbol_str.upper(), "fields": fields}
+        )
 
     def get_options_chain(
         self,
@@ -255,7 +269,7 @@ class SchwabClient:
 
 def is_price_history_fresh(
     symbol: str,
-    out_dir: str | Path = "data",
+    out_dir: str | Path = common.stockdata_path,
     cutoff_hour: int = 14,
 ) -> bool:
     """Return True if `<symbol>_price_history.json` was updated at or after `cutoff_hour` (default 2 PM) today."""
@@ -263,7 +277,9 @@ def is_price_history_fresh(
     if not history_file.exists():
         return False
     mtime = datetime.fromtimestamp(history_file.stat().st_mtime)
-    today_cutoff = datetime.now().replace(hour=cutoff_hour, minute=0, second=0, microsecond=0)
+    today_cutoff = datetime.now().replace(
+        hour=cutoff_hour, minute=0, second=0, microsecond=0
+    )
     return mtime >= today_cutoff
 
 
@@ -272,7 +288,7 @@ def download_ticker_data(
     client: SchwabClient | None = None,
     strikes: int = 10,
     days: int = 250,
-    out_dir: str | Path = "data",
+    out_dir: str | Path = common.stockdata_path,
     include_options: bool = True,
     force: bool = False,
     cutoff_hour: int = 15,
@@ -287,11 +303,15 @@ def download_ticker_data(
     target_dir = Path(out_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
     history_file = target_dir / f"{sym.lower()}_price_history.json"
-    
-    logger.info(f"Downloading data for {sym} (strikes={strike_count}, days={days}, force={force})...")
+
+    logger.info(
+        f"Downloading data for {sym} (strikes={strike_count}, days={days}, force={force})..."
+    )
 
     if not force and is_price_history_fresh(sym, target_dir, cutoff_hour=cutoff_hour):
-        logger.info(f"Skipping {sym}: {history_file} is already fresh (updated at/after {cutoff_hour:02d}:00 today).")
+        logger.info(
+            f"Skipping {sym}: {history_file} is already fresh (updated at/after {cutoff_hour:02d}:00 today)."
+        )
         return {
             "symbol": sym,
             "skipped": True,
@@ -313,7 +333,9 @@ def download_ticker_data(
 
     chain_data: dict[str, Any] | None = None
     if include_options:
-        chain_data = active_client.get_options_chain(sym, contract_type="ALL", strike_count=strike_count)
+        chain_data = active_client.get_options_chain(
+            sym, contract_type="ALL", strike_count=strike_count
+        )
         chain_file = target_dir / f"{sym.lower()}_options_chain.json"
         chain_file.write_text(json.dumps(chain_data, indent=2), encoding="utf-8")
 
@@ -354,13 +376,19 @@ def download_ticker_data(
     }
 
 
-def main(symbol: str | None = None, strikes: int = 10, days: int = 250, force: bool = False) -> dict[str, Any]:
+def main(
+    symbol: str | None = None, strikes: int = 10, days: int = 250, force: bool = False
+) -> dict[str, Any]:
     """CLI or programmatic entry point: python schwab_client.py NVDA or schwab.main('MU')."""
     if symbol is None:
         import argparse
 
-        parser = argparse.ArgumentParser(description="Download latest quote, options chain, and price history from Schwab.")
-        parser.add_argument("symbol", nargs="?", default="NVDA", help="Ticker symbol (default: NVDA)")
+        parser = argparse.ArgumentParser(
+            description="Download latest quote, options chain, and price history from Schwab."
+        )
+        parser.add_argument(
+            "symbol", nargs="?", default="NVDA", help="Ticker symbol (default: NVDA)"
+        )
         parser.add_argument(
             "--strikes",
             type=int,
@@ -389,4 +417,3 @@ def main(symbol: str | None = None, strikes: int = 10, days: int = 250, force: b
 
 if __name__ == "__main__":
     main()
-
