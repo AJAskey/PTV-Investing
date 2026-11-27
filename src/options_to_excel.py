@@ -15,6 +15,7 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.worksheet.worksheet import Worksheet
 
 from options_bs_calculator import calculate_option_price
+import stockdata
 
 import logging
 
@@ -93,9 +94,13 @@ def _write_summary_sheet(
     ws: Worksheet,
     payload: dict[str, Any],
     calls: list[dict[str, Any]],
-    puts: list[dict[str, Any]],
+    puts: list[dict[str, Any]],  ta_data
 ) -> None:
     underlying = payload.get("underlying") or {}
+    
+    ul_ticker= underlying.get("symbol", "")
+
+    
     rows = [
         ("Symbol", payload.get("symbol", underlying.get("symbol", ""))),
         ("Description", underlying.get("description", "")),
@@ -173,7 +178,7 @@ def _write_options_table(
         showColumnStripes=False,
     )
     ws.add_table(table)
-    ws.freeze_panes = "H2"
+    ws.freeze_panes = "I2"
 
     for col_idx, (header, _, num_fmt) in enumerate(COLUMNS, start=1):
         col_letter = get_column_letter(col_idx)
@@ -197,13 +202,15 @@ def _write_scenarios_sheet(
     min_open_interest: int = 100,
     logger: Any = None,
     high_profit_file: Any = None,
+    ta_data: stockdata.StockData | None = None,
 ) -> None:
     """Write a Black-Scholes scenario projection sheet for contracts with DTE >= min_dte and openInterest > min_open_interest."""
     ws.sheet_properties.tabColor = "FFFF00"
 
-    logger.info(
-        f"aja  Writing scenarios sheet for {option_type} contracts with DTE >= {min_dte} and openInterest > {min_open_interest}"
-    )
+    if logger:
+        logger.info(
+            f"aja  Writing scenarios sheet for {option_type} contracts with DTE >= {min_dte} and openInterest > {min_open_interest}"
+        )
 
     opt = option_type.lower()
     sign = "+" if opt == "call" else "-"
@@ -211,12 +218,13 @@ def _write_scenarios_sheet(
     ul_price = float(payload.get("underlyingPrice") or underlying.get("last") or 0.0)
     r = float(payload.get("interestRate") or 0.0) / 100.0
     q = float(payload.get("dividendYield") or 0.0) / 100.0
-    iv = float(payload.get("volatility") or 0.0) 
+    iv = float(payload.get("volatility") or 0.0)
     open_date = date.today()
-    
-    logger.info(
-        f"aja  Underlying price: {ul_price}, interest rate: {r:.4%}, dividend yield: {q:.4%}, volatility: {iv:.2f}%"
-    )
+
+    if logger:
+        logger.info(
+            f"aja  Underlying price: {ul_price}, interest rate: {r:.4%}, dividend yield: {q:.4%}, volatility: {iv:.2f}%"
+        )
 
     headers: list[tuple[str, str]] = [
         ("Open Date", "yyyy-mm-dd"),
@@ -260,9 +268,10 @@ def _write_scenarios_sheet(
         and (c.get("openInterest") or 0) > min_open_interest
         and (iv < 100.0)
     ]
-    logger.info(
-        f"aja 263 Found {len(eligible)} eligible {option_type} contracts with DTE >= {min_dte} and openInterest > {min_open_interest} and IV: {iv}")
-    
+    if logger:
+        logger.info(
+            f"aja 263 Found {len(eligible)} eligible {option_type} contracts with DTE >= {min_dte} and openInterest > {min_open_interest} and IV: {iv}"
+        )
 
     for contract in eligible:
         exp_date = date.fromisoformat(contract["expiration_date"])
@@ -305,10 +314,10 @@ def _write_scenarios_sheet(
                 """ Assume longer-dated options are going in the direction desired, 
                    and IV is increasing as time goes on. 
                 """
-                if sell_dte > 60:
-                    ivm = ivm * 1.25
-                elif sell_dte > 100:
+                if sell_dte > 100:
                     ivm = ivm * 1.5
+                elif sell_dte > 60:
+                    ivm = ivm * 1.25
 
                 proj_price = calculate_option_price(
                     S=target_ul,
@@ -331,15 +340,31 @@ def _write_scenarios_sheet(
                 profits.append(profit)
                 profit_pcts.append(profit_pct)
 
-                if profit_pct is not None and profit_pct > 1.5:
+                if profit_pct is not None and profit_pct > 1.99 and ta_data is not None:
+                    adx_14 = ta_data.latest_adx_14()
+                    di_14 = ta_data.latest_di14()
                     if logger:
-                        logger.info(
-                            f"High profit percentage for {contract.get('symbol')} : {exp_date} : {strike} : {profit_pct:.2%}"
-                        )
-                    if high_profit_file:
-                        high_profit_file.write(
-                            f"{contract.get('symbol')} : {exp_date} : {strike} : {profit_pct:.2%}\n"
-                        )
+                        logger.info(f"ADX(14): {adx_14} : DI+: {di_14} : DI-: {di_14}")
+                    if adx_14 is not None and adx_14 > 30.0:
+                        if di_14 is False and opt == "put":
+                            if logger:
+                                logger.info(
+                                    f"High profit percentage for {contract.get('symbol')} : {exp_date} : {strike} : Mark {mark} : IVm {ivm:.2%} : {profit_pct:.2%}"
+                                )
+                            if high_profit_file:
+                                high_profit_file.write(
+                                    f"{contract.get('symbol')} : {exp_date} : {strike} : Mark {mark} : IV@sell {ivm:.2%} : {profit_pct:.2%}\n"
+                                )
+
+                        if di_14 is True and opt == "call":
+                            if logger:
+                                logger.info(
+                                    f"High profit percentage for {contract.get('symbol')} : {exp_date} : {strike} : Mark {mark} : IVm {ivm:.2%} : {profit_pct:.2%}"
+                                )
+                            if high_profit_file:
+                                high_profit_file.write(
+                                    f"{contract.get('symbol')} : {exp_date} : {strike} : Mark {mark} : IV@sell {ivm:.2%} : {profit_pct:.2%}\n"
+                                )
 
             else:
                 sell_dtes.append(None)
@@ -378,7 +403,7 @@ def _write_scenarios_sheet(
         showColumnStripes=False,
     )
     ws.add_table(table)
-    ws.freeze_panes = "H2"
+    ws.freeze_panes = "I2"
 
     for col_idx, (header, num_fmt) in enumerate(headers, start=1):
         col_letter = get_column_letter(col_idx)
@@ -393,6 +418,7 @@ def _write_scenarios_sheet(
 
 
 def convert_options_json_to_excel(
+    ul_ticker: str,
     input_path: str | Path,
     output_path: str | Path,
     logger: logging.Logger | None = None,
@@ -411,11 +437,13 @@ def convert_options_json_to_excel(
             c.get("putCall", ""),
         ),
     )
+    
+    ta_data = stockdata.StockData(ul_ticker, data_dir="data")
 
     wb = Workbook()
     summary_ws = wb.active
     summary_ws.title = "Summary"
-    _write_summary_sheet(summary_ws, payload, calls, puts)
+    _write_summary_sheet(summary_ws, payload, calls, puts, ta_data)
 
     all_ws = wb.create_sheet("All Options")
     _write_options_table(all_ws, "AllOptionsTable", all_contracts)
@@ -435,6 +463,7 @@ def convert_options_json_to_excel(
         "call",
         logger=logger,
         high_profit_file=high_profit_file,
+        ta_data=ta_data,
     )
 
     put_scenarios_ws = wb.create_sheet("Put Scenarios")
@@ -446,6 +475,7 @@ def convert_options_json_to_excel(
         "put",
         logger=logger,
         high_profit_file=high_profit_file,
+        ta_data=ta_data,
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -474,9 +504,12 @@ def main() -> None:
     in_path = Path(args.input_json)
     if not in_path.exists():
         raise FileNotFoundError(f"Input JSON file not found: {in_path}")
+    
+    print(args.output)
 
     out_path = Path(args.output) if args.output else in_path.with_suffix(".xlsx")
-    call_count, put_count = convert_options_json_to_excel(in_path, out_path)
+    ul_ticker = in_path.stem.split("_")[0].upper()
+    call_count, put_count = convert_options_json_to_excel(ul_ticker, in_path, out_path)
     print(
         f"Created {out_path} ({call_count} calls, {put_count} puts, {call_count + put_count} total contracts)."
     )

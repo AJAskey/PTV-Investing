@@ -59,7 +59,9 @@ def force(close,volume,period):
     # print(f'{ret=:.2f}')
     return ret
 
-      
+
+    def ma150():
+        return 0      
 
 if __name__ == "__main__":
     print("Hello World")    

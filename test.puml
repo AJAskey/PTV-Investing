@@ -1,0 +1,14 @@
+@startuml
+class Animal {
+    +name: str
+    +__init__(name: str)
+    +speak()
+}
+
+class Dog {
+    +breed: str
+    +bark()
+}
+
+Animal <|-- Dog
+@enduml

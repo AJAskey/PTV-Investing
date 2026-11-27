@@ -5,6 +5,11 @@ from typing import Any
 import pandas as pd
 import talib
 
+'''
+This module contains technical analysis methods and data structures for handling those methods, data frames mostly. 
+ta-lib is imported, and some other routines are homegrown by me. 
+'''
+
 
 def price_history_to_dataframe(
     data: dict[str, Any] | list[dict[str, Any]] | str | Path,
@@ -49,10 +54,17 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["sma_20"] = talib.SMA(close, timeperiod=20)
     df["sma_50"] = talib.SMA(close, timeperiod=50)
-    df["sma_200"] = talib.SMA(close, timeperiod=200)
+    df["sma_150"] = talib.SMA(close, timeperiod=150)
     df["ema_12"] = talib.EMA(close, timeperiod=12)
     df["ema_26"] = talib.EMA(close, timeperiod=26)
     df["rsi_14"] = talib.RSI(close, timeperiod=14)
+    
+    price = close[-1] if len(close) > 0 else None
+    dma20 = df["sma_20"].iloc[-1] if len(df) > 0 else None
+    dma50 = df["sma_50"].iloc[-1] if len(df) > 0 else None
+    dma150 = df["sma_150"].iloc[-1] if len(df) > 0 else None
+    
+    print(f"Price: {price:.2f}, 20DMA: {dma20:.2f}, 50DMA: {dma50:.2f}, 150DMA: {dma150:.2f}")
 
     macd, macd_signal, macd_hist = talib.MACD(close)
     df["macd"] = macd
@@ -64,6 +76,10 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["bb_middle"] = middle
     df["bb_lower"] = lower
 
+    df["adx_14"] = talib.ADX(high, low, close, timeperiod=14)
+    df["dip_14"] = talib.PLUS_DI(high, low, close, timeperiod=14)
+    df["dim_14"] = talib.MINUS_DI(high, low, close, timeperiod=14)
+ 
     df["atr_14"] = talib.ATR(high, low, close, timeperiod=14)
     df["obv"] = talib.OBV(close, volume)
     return df
@@ -83,6 +99,9 @@ def load_dataframe(parquet_path: str | Path) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    df = load_price_history("data/nvda_price_history.json")
+    df = load_price_history("data/spy_price_history.json")
     df = calculate_indicators(df)
-    print(df[["date", "close", "sma_20", "sma_50", "sma_200", "rsi_14", "atr_14"]].tail(5))
+    print(df[["date", "close", "sma_20", "sma_50", "sma_150", "rsi_14", "atr_14"]].tail(5).round(2))
+    print(f"ADX 14: {df['adx_14'].iloc[-1]:.2f}")  
+    print(f"DIP 14: {df['dip_14'].iloc[-1]:.2f}")  
+    print(f"DIM 14: {df['dim_14'].iloc[-1]:.2f}")
