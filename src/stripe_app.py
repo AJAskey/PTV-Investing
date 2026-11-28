@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
@@ -24,7 +25,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-LANDING_HTML_PATH = Path(__file__).resolve().parent.parent / "subs" / "ptv-investing.html"
+SUBS_DIR = Path(__file__).resolve().parent.parent / "subs"
+LANDING_HTML_PATH = SUBS_DIR / "ptv-investing.html"
+MEMBER_HTML_PATH = SUBS_DIR / "memberpage.html"
+ANALYSIS_DIR = SUBS_DIR / "analysis"
+
+if ANALYSIS_DIR.exists():
+    app.mount("/analysis", StaticFiles(directory=str(ANALYSIS_DIR)), name="analysis")
 
 
 class OneTimeCheckoutRequest(BaseModel):
@@ -74,6 +81,14 @@ def landing_page() -> str:
     if LANDING_HTML_PATH.exists():
         return LANDING_HTML_PATH.read_text(encoding="utf-8")
     return console()
+
+
+@app.get("/memberpage", response_class=HTMLResponse)
+@app.get("/memberpage.html", response_class=HTMLResponse)
+def member_page() -> str:
+    if MEMBER_HTML_PATH.exists():
+        return MEMBER_HTML_PATH.read_text(encoding="utf-8")
+    raise HTTPException(status_code=404, detail="memberpage.html not found")
 
 
 @app.get("/console", response_class=HTMLResponse)

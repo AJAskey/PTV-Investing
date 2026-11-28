@@ -1,18 +1,20 @@
 import json
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 import common
 import pandas as pd
-import talib
+import talib, ta_aja
 
-'''
+"""
 This module contains technical analysis methods and data structures for handling those methods, data frames mostly. 
 ta-lib is imported, and some other routines are homegrown by me. 
-'''
+"""
 
 
 def price_history_to_dataframe(
     data: dict[str, Any] | list[dict[str, Any]] | str | Path,
+    symbol: str | None = None,
 ) -> pd.DataFrame:
     """Convert Schwab price history JSON (dict, candle list, JSON string, or file path) into a sorted DataFrame."""
     if isinstance(data, Path):
@@ -30,17 +32,51 @@ def price_history_to_dataframe(
     if not candles:
         raise ValueError("No candles found in price history data.")
 
+    resolved_symbol = symbol
+    if not resolved_symbol and isinstance(raw, dict):
+        resolved_symbol = raw.get("symbol")
+
     df = pd.DataFrame(candles)
     for col in ("open", "high", "low", "close", "volume"):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
     df["date"] = pd.to_datetime(df["datetime"], unit="ms")
-    return df.sort_values("date").reset_index(drop=True)
+    df = df.sort_values("date").reset_index(drop=True)
+    if resolved_symbol and str(resolved_symbol).strip():
+        df.attrs["symbol"] = str(resolved_symbol).strip().upper()
+    return df
 
 
-def load_price_history(json_path: str | Path) -> pd.DataFrame:
+def load_price_history(
+    json_path: str | Path, symbol: str | None = None
+) -> pd.DataFrame:
     """Load Schwab price history JSON into a chronologically sorted DataFrame."""
-    return price_history_to_dataframe(Path(json_path))
+    return price_history_to_dataframe(Path(json_path), symbol=symbol)
+
+
+def get_symbol(df: pd.DataFrame) -> str | None:
+    """Return the ticker symbol stored on `df` (`df.attrs['symbol']` or `'symbol'` column), or None."""
+    sym = df.attrs.get("symbol")
+    if not sym and "symbol" in df.columns and not df["symbol"].empty:
+        val = df["symbol"].iloc[0]
+        if pd.notna(val):
+            sym = val
+    if sym and str(sym).strip():
+        return str(sym).strip().upper()
+    return None
+
+
+def find_dataframe_by_symbol(
+    dfs: Iterable[pd.DataFrame], symbol: str
+) -> pd.DataFrame | None:
+    """Search `dfs` for the first DataFrame matching `symbol` (case-insensitive), or return None."""
+    target = symbol.strip().upper()
+    if not target:
+        return None
+    for df in dfs:
+        if get_symbol(df) == target:
+            return df
+    return None
 
 
 def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -58,13 +94,15 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["ema_12"] = talib.EMA(close, timeperiod=12)
     df["ema_26"] = talib.EMA(close, timeperiod=26)
     df["rsi_14"] = talib.RSI(close, timeperiod=14)
-    
+
     price = close[-1] if len(close) > 0 else None
     dma20 = df["sma_20"].iloc[-1] if len(df) > 0 else None
     dma50 = df["sma_50"].iloc[-1] if len(df) > 0 else None
     dma150 = df["sma_150"].iloc[-1] if len(df) > 0 else None
-    
-    print(f"Price: {price:.2f}, 20DMA: {dma20:.2f}, 50DMA: {dma50:.2f}, 150DMA: {dma150:.2f}")
+
+    print(
+        f"Price: {price:.2f}, 20DMA: {dma20:.2f}, 50DMA: {dma50:.2f}, 150DMA: {dma150:.2f}"
+    )
 
     macd, macd_signal, macd_hist = talib.MACD(close)
     df["macd"] = macd
@@ -79,9 +117,11 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["adx_14"] = talib.ADX(high, low, close, timeperiod=14)
     df["dip_14"] = talib.PLUS_DI(high, low, close, timeperiod=14)
     df["dim_14"] = talib.MINUS_DI(high, low, close, timeperiod=14)
- 
+
     df["atr_14"] = talib.ATR(high, low, close, timeperiod=14)
     df["obv"] = talib.OBV(close, volume)
+    df["roc"] = talib.ROC(close, 10)
+    df["fma"] = ta_aja.force(close, volume, 10)
     return df
 
 
@@ -96,6 +136,7 @@ def save_dataframe(df: pd.DataFrame, output_path: str | Path) -> Path:
 def load_dataframe(parquet_path: str | Path) -> pd.DataFrame:
     """Load a DataFrame from a Parquet file."""
     return pd.read_parquet(Path(parquet_path))
+
 
 def _last_value(series: pd.Series, decimals: int | None = 2) -> float | int | None:
     """Return the last non-NaN value in `series`, rounded or cast to int when `decimals` is None."""
@@ -112,6 +153,7 @@ def get_ta_data(json_path: str | Path) -> Any:
     df = load_price_history(json_path)
     df = calculate_indicators(df)
     ret = type("Ret", (), {})()
+    ret.symbol = get_symbol(df)
     ret.last_price = _last_value(df["close"])
     ret.ma20 = _last_value(df["sma_20"])
     ret.ma50 = _last_value(df["sma_50"])
@@ -122,15 +164,25 @@ def get_ta_data(json_path: str | Path) -> Any:
     ret.dim14 = _last_value(df["dim_14"])
     ret.atr14 = _last_value(df["atr_14"])
     ret.obv = _last_value(df["obv"], decimals=None)
+    ret.roc = _last_value(df["roc"], decimals=2)
+    ret.fma = _last_value(df["fma"], decimals=2)
+
     return ret
 
 
 if __name__ == "__main__":
-    df = load_price_history(common.stockdata_path+"/spy_price_history.json")
-    df = calculate_indicators(df)
-    print(df[["date", "close", "sma_20", "sma_50", "sma_150", "rsi_14", "atr_14"]].tail(5).round(2))
-    print(f"ADX 14: {df['adx_14'].iloc[-1]:.2f}")  
-    print(f"DIP 14: {df['dip_14'].iloc[-1]:.2f}")  
-    print(f"DIM 14: {df['dim_14'].iloc[-1]:.2f}")
-    ta_json = get_ta_data(common.stockdata_path+"/spy_price_history.json")
-    print(common.dict_to_str(ta_json.__dict__, desc="TA_Data"))
+    df = load_price_history(common.stockdata_path + "/mu_price_history.json")
+    dfta = calculate_indicators(df)
+    # print(
+    #     df[["date", "close", "sma_20", "sma_50", "sma_150", "rsi_14", "atr_14"]]
+    #     .tail(5)
+    #     .round(2)
+    # )
+    # print(f"ADX 14: {df['adx_14'].iloc[-1]:.2f}")
+    # print(f"DIP 14: {df['dip_14'].iloc[-1]:.2f}")
+    # print(f"DIM 14: {df['dim_14'].iloc[-1]:.2f}")
+    sym=df.attrs.get("symbol")
+    print(f"Symbol: {sym}, Last Price: {df['close'].iloc[-1]:.2f}")
+    
+    # ta_json = get_ta_data(common.stockdata_path + "/spy_price_history.json")
+    print(common.dict_to_str(dfta, desc="TA_Data"))

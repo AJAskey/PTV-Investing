@@ -5,7 +5,7 @@ import gen_logging, common
 
 logger = gen_logging.setup_logging(logger_name="Get_STOCK_DATA")
 
-with open(f"{common.ptv_path}/Input/stocks-small.txt", "r") as file:
+with open(f"{common.ptv_path}/Input/stocks.txt", "r") as file:
     tickers = [line.strip() for line in file if line.strip()]
 
 client = SchwabClient()
